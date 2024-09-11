@@ -281,7 +281,7 @@ static int guided_byte(AVFilterContext *ctx, GuidedContext *s,
   size_t m = height;
   size_t r = radius;
   
-  size_t ld_n, ld_m, i, j;
+  size_t ld_n, ld_m, i, j, ld_n_red, ld_m_red;
   
   ThreadData t;
   
@@ -306,20 +306,28 @@ static int guided_byte(AVFilterContext *ctx, GuidedContext *s,
   float * ai2 = s->ai2;
 
   float maxval_reciprocal = 1/maxval;
-  
 
-  ld_n = (n>>POW_V)<<POW_V;
-  
-  if (ld_n < n) ld_n = ld_n + V;
-  
-  ld_m = (m>>POW_V)<<POW_V;
-  
-  if (ld_m < m) ld_m = ld_m + V;
-  
   if (n < 2 * r + 1 || m < 2 * r + 1 )
     {
       return -1;
     }
+  
+  
+  ld_n = (n>>POW_V)<<POW_V;
+  
+  if (ld_n < n) ld_n = ld_n + V;
+
+  ld_n_red = ld_n >> POW_T;  // = ld_n/(V*NR)
+
+  if ((ld_n_red << POW_T) < ld_n) ld_n_red = ld_n_red + 1;
+    
+  ld_m = (m>>POW_V)<<POW_V;
+  
+  if (ld_m < m) ld_m = ld_m + V;
+  
+  ld_m_red = ld_m >> POW_T;  // = ld_m/(V*NR)
+
+  if ((ld_m_red << POW_T) < ld_m) ld_m_red = ld_m_red + 1;
   
   //  printf("nb_threads = %d, n = %lu, m = %lu, ld_n = %lu, ld_m = %lu, ssrc = %p, ssrcRef = %p, src_stride = %d, src_ref_stride = %d, dst_stride = %d\n", nb_threads, n, m, ld_n, ld_m, ssrc, ssrcRef, src_stride, src_ref_stride, dst_stride);
     
@@ -400,25 +408,25 @@ static int guided_byte(AVFilterContext *ctx, GuidedContext *s,
   t.work = work;
   t.ai   = ai;
   t.bi   = bi;
+
    
-  
   // boxfilter(t1, r, n, m, ld_n, ld_m, ai, bi, work); //t1 = mean_I  (m x n)
-  t.src = t1; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads));  SWAP(t1, work);
+  t.src = t1; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_m_red, nb_threads));  SWAP(t1, work);
   
   matmul(I, I, t2, ld_n, m);//t2 = I*I (n x m)
   
   // boxfilter(t2, r, n, m, ld_n, ld_m, ai, bi, work);//t2 = mean_II  (m x n)
-  t.src = t2; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads));  SWAP(t2, work);
+  t.src = t2; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_m_red, nb_threads));  SWAP(t2, work);
   
   diffmatmul(t2, t1, t1, ld_n, m);//t2 = mean_II - mean_I * mean_I = var_I  (m x n)
   
   matmul(I, p, t3, ld_n, m);//t3 = I*p   (n x m)
   
   //boxfilter(t3, r, n, m, ld_n, ld_m, ai, bi, work);//t3 = mean_Ip  (m x n)
-  t.src = t3; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads));  SWAP(t3, work);
+  t.src = t3; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_m_red, nb_threads));  SWAP(t3, work);
   
   //boxfilter(p, r, n, m, ld_n, ld_n, ai, bi, work);//p = mean_p;   (m x n)
-  t.src = p; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads)); SWAP(p, work);
+  t.src = p; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_m_red, nb_threads)); SWAP(p, work);
   
   diffmatmul(t3, t1, p, ld_n, m);//t3 = mean_Ip - mean_I * mean_p = cov_Ip  (m x n)
   
@@ -436,10 +444,10 @@ static int guided_byte(AVFilterContext *ctx, GuidedContext *s,
   t.bi   = bi;
   
   //boxfilter(t3, r, n, m, ld_n, ld_m, ai, bi, work);//t3 = mean_a  (n x m)
-  t.src = t3; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads)); SWAP(t3, work);
+  t.src = t3; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_n_red, nb_threads)); SWAP(t3, work);
   
   //boxfilter(p,  r, n, m, ld_n, ld_m, ai, bi, work);//p = mean_b  (n x m)
-  t.src = p;  t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads)); SWAP(p, work);
+  t.src = p;  t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_n_red, nb_threads)); SWAP(p, work);
 
   addmatmul(p, t3, I, ld_n, m);//p = mean_b + mean_a * I = q
  

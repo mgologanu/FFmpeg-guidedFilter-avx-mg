@@ -116,7 +116,7 @@ typedef struct ThreadData {
 
 #define SWAP(a, b)				\
   do {						\
-    __auto_type _t = (a);				\
+    __auto_type _t = (a);			\
     (a) = (b);					\
     (b) = (_t);					\
   } while(false)

@@ -116,10 +116,10 @@ typedef struct ThreadData {
 
 #define SWAP(a, b)				\
   do {						\
-    float * swap_tmp_ = a;			\
-    a = b;					\
-    b = swap_tmp_;				\
-  } while(0)
+    __auto_type _t = (a);				\
+    (a) = (b);					\
+    (b) = (_t);					\
+  } while(false)
 
 
 #define V 8

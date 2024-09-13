@@ -82,6 +82,8 @@ typedef struct GuidedContext {
   float *t3;
   float *ai;
   float *bi;
+
+  float *ai2;
   
   int (*box_slice)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
 } GuidedContext;
@@ -116,6 +118,15 @@ typedef struct ThreadData {
   float *ai;
   float *bi;  
 } ThreadData;
+
+
+#define SWAP(a, b)				\
+  do {						\
+    __auto_type _t = (a);			\
+    (a) = (b);					\
+    (b) = (_t);					\
+  } while(false)
+
 
 #define V 8
 // log2(V)
@@ -200,7 +211,7 @@ static int boxfilter(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
   
   boxfilter1D_norm(x, work, r, m, n, ld_m, ai, bi);
   
-  transpose(work, x, ld_m, ld_n);
+  /* transpose(work, x, ld_m, ld_n); */
   
   return 0;
 }
@@ -278,7 +289,7 @@ static int guided_byte(AVFilterContext *ctx, GuidedContext *s,
   size_t m = height;
   size_t r = radius;
   
-  size_t ld_n, ld_m, i, j;
+  size_t ld_n, ld_m, i, j, ld_n_red, ld_m_red;
   
   ThreadData t;
   
@@ -300,28 +311,36 @@ static int guided_byte(AVFilterContext *ctx, GuidedContext *s,
   float * ai = s->ai;
   float * bi = s->bi;
 
+  float * ai2 = s->ai2;
+
   float maxval_reciprocal = 1/maxval;
 
   double result;
-   
+
   if (n < 2 * r + 1 || m < 2 * r + 1 )
     {
       return -1;
     }
   
-
   timing_basic_now(&time1);
   
   ld_n = (n>>POW_V)<<POW_V;
   
   if (ld_n < n) ld_n = ld_n + V;
-  
+
+  ld_n_red = ld_n >> POW_T;  // = ld_n/(V*NR)
+
+  if ((ld_n_red << POW_T) < ld_n) ld_n_red = ld_n_red + 1;
+    
   ld_m = (m>>POW_V)<<POW_V;
   
   if (ld_m < m) ld_m = ld_m + V;
   
- 
-  //printf("nb_threads = %d, n = %lu, m = %lu, ld_n = %lu, ld_m = %lu, ssrc = %p, ssrcRef = %p, src_stride = %d, src_ref_stride = %d, dst_stride = %d\n", nb_threads, n, m, ld_n, ld_m, ssrc, ssrcRef, src_stride, src_ref_stride, dst_stride);
+  ld_m_red = ld_m >> POW_T;  // = ld_m/(V*NR)
+
+  if ((ld_m_red << POW_T) < ld_m) ld_m_red = ld_m_red + 1;
+  
+  // printf("nb_threads = %d, n = %lu, m = %lu, ld_n = %lu, ld_m = %lu, ssrc = %p, ssrcRef = %p, src_stride = %d, src_ref_stride = %d, dst_stride = %d\n", nb_threads, n, m, ld_n, ld_m, ssrc, ssrcRef, src_stride, src_ref_stride, dst_stride);
     
   for (i = 0; i < r+1; i++)
     {
@@ -343,6 +362,30 @@ static int guided_byte(AVFilterContext *ctx, GuidedContext *s,
     {
       ai[i] = 0;
     }
+
+  
+  
+  for (i = 0; i < r+1; i++)
+    {
+      ai2[i] = 1./(r+1+i)/(2*r+1);
+    }
+  
+  for (i = r+1; i < n - (r+1); i++)
+    {
+      ai2[i] = 1./(2*r+1)/(2*r+1);
+    }
+  
+  for (i = n - (r+1); i < n; i++)
+    {
+      ai2[i] = ai[n - 1 - i];
+    }
+
+  for (i = n; i < ld_n; i++)
+    {
+      ai2[i] = 0;
+    }
+
+ 
 
   
   for (j = 0; j<m; j++)
@@ -376,36 +419,46 @@ static int guided_byte(AVFilterContext *ctx, GuidedContext *s,
   t.work = work;
   t.ai   = ai;
   t.bi   = bi;
-  
+
+   
   // boxfilter(t1, r, n, m, ld_n, ld_m, ai, bi, work); //t1 = mean_I  (m x n)
-  t.src = t1; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads));  
+  t.src = t1; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_m_red, nb_threads));  SWAP(t1, work);
   
   matmul(I, I, t2, ld_n, m);//t2 = I*I (n x m)
   
   // boxfilter(t2, r, n, m, ld_n, ld_m, ai, bi, work);//t2 = mean_II  (m x n)
-  t.src = t2; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads));  
+  t.src = t2; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_m_red, nb_threads));  SWAP(t2, work);
   
   diffmatmul(t2, t1, t1, ld_n, m);//t2 = mean_II - mean_I * mean_I = var_I  (m x n)
   
   matmul(I, p, t3, ld_n, m);//t3 = I*p   (n x m)
   
   //boxfilter(t3, r, n, m, ld_n, ld_m, ai, bi, work);//t3 = mean_Ip  (m x n)
-  t.src = t3; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads));  
+  t.src = t3; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_m_red, nb_threads));  SWAP(t3, work);
   
   //boxfilter(p, r, n, m, ld_n, ld_n, ai, bi, work);//p = mean_p;   (m x n)
-  t.src = p; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads));
+  t.src = p; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_m_red, nb_threads)); SWAP(p, work);
   
   diffmatmul(t3, t1, p, ld_n, m);//t3 = mean_Ip - mean_I * mean_p = cov_Ip  (m x n)
   
   matdivconst(t3, t2, ld_n, m, eps);//t3 = t3/(t2+eps) = cov_Ip/(var_I + eps) = a  (m x n)
   
   diffmatmul(p, t3, t1, ld_n, m);//p = mean_p - a * mean_I = b  (m x n)
+
+  //For the next two boxfilters, we need to apply them on transposed images
+  t.n    = m;                                                                       
+  t.m    = n;                                                                       
+  t.ld_n = ld_m;                                                                    
+  t.ld_m = ld_n;
+  t.work = work;
+  t.ai   = ai2;
+  t.bi   = bi;
   
   //boxfilter(t3, r, n, m, ld_n, ld_m, ai, bi, work);//t3 = mean_a  (n x m)
-  t.src = t3; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads));
+  t.src = t3; t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_n_red, nb_threads)); SWAP(t3, work);
   
   //boxfilter(p,  r, n, m, ld_n, ld_m, ai, bi, work);//p = mean_b  (n x m)
-  t.src = p; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(m, nb_threads));
+  t.src = p;  t.work = work; ff_filter_execute(ctx, s->box_slice, &t, NULL, FFMIN(ld_n_red, nb_threads)); SWAP(p, work);
 
   addmatmul(p, t3, I, ld_n, m);//p = mean_b + mean_a * I = q
  
@@ -416,14 +469,14 @@ static int guided_byte(AVFilterContext *ctx, GuidedContext *s,
 	  dst [j * dst_stride + i] = (uint8_t) (p[j * ld_n + i] * maxval);
 	}
     }
-                                                                                        
-                
+
+
   timing_basic_now(&time2);
 
   result = timing_basic_diff(&time2,&time1);
 
-  //  printf("%7.0f\n\n",  result);
-  
+  //printf("%7.0f\n\n",  result);
+                                                                                        
   return ret;                                                                         
 }
 
@@ -491,9 +544,10 @@ static int config_output(AVFilterLink *outlink)
 
     size_t n, m, ld_n, ld_m;
 
+ 
     
     timing_basic_now(&start);
-    
+  
     r = s->radius;
 
     if (s->guidance == ON) {
@@ -531,10 +585,12 @@ static int config_output(AVFilterLink *outlink)
 
     s->ai     = av_calloc(ld_m, sizeof(*s->ai));
     s->bi     = av_calloc(r+1,  sizeof(*s->bi));
+
+    s->ai2     = av_calloc(ld_n, sizeof(*s->ai2));
     
     
 
-    if (!s->I || !s->p || !s->work || !s->t1 || !s->t2 || !s->t3 || !s->ai || !s->bi)
+    if (!s->I || !s->p || !s->work || !s->t1 || !s->t2 || !s->t3 || !s->ai || !s->bi || !s->ai2)
         return AVERROR(ENOMEM);
 
     if (s->guidance == OFF)
@@ -635,7 +691,10 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_freep(&s->ai);
     av_freep(&s->bi);
 
+    av_freep(&s->ai2);
+
     timing_basic_now(&finish);
+  
     
     return;
 }

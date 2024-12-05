@@ -50,19 +50,18 @@ Miscellaneous Areas
 ===================
 
 documentation                           Stefano Sabatini, Mike Melanson, Timothy Gu, Gyan Doshi
-project server day to day operations    (L: root@ffmpeg.org) Árpád Gereöffy, Michael Niedermayer, Reimar Doeffinger, Alexander Strasser, Nikolay Aleksandrov, Timo Rothenpieler
-project server emergencies              (L: root@ffmpeg.org) Árpád Gereöffy, Reimar Doeffinger, Alexander Strasser, Nikolay Aleksandrov, Timo Rothenpieler
-presets                                 Robert Swain
+project server day to day operations    (L: root@ffmpeg.org) Michael Niedermayer, Reimar Doeffinger, Alexander Strasser, Nikolay Aleksandrov, Timo Rothenpieler
+project server emergencies              (L: root@ffmpeg.org) Reimar Doeffinger, Alexander Strasser, Nikolay Aleksandrov, Timo Rothenpieler
+presets                             [0]
 metadata subsystem                      Aurelien Jacobs
 release management                      Michael Niedermayer
-API tests                               Ludmila Glinskih
+API tests                           [0]
 
 
 Communication
 =============
-
-website                                 (S: https://git.ffmpeg.org/ffmpeg-web) Deby Barbara Lepage
-fate.ffmpeg.org                         (L: fate-admin@ffmpeg.org) (W: https://fate.ffmpeg.org) (P: https://ffmpeg.org/fate.html) (S: https://git.ffmpeg.org/fateserver) Timothy Gu
+website                                 (T: https://git.ffmpeg.org/ffmpeg-web) Deby Barbara Lepage
+fate.ffmpeg.org                         (L: fate-admin@ffmpeg.org) (W: https://fate.ffmpeg.org) (P: https://ffmpeg.org/fate.html) (S: https://git.ffmpeg.org/fateserver) Timo Rothenpieler
 Trac bug tracker                        (W: https://trac.ffmpeg.org) Alexander Strasser, Michael Niedermayer, Carl Eugen Hoyos
 Patchwork                           [2] (W: https://patchwork.ffmpeg.org) Andriy Gelman
 mailing lists                           (W: https://ffmpeg.org/contact.html#MailingLists) Baptiste Coudurier
@@ -83,6 +82,7 @@ Other:
   aes_ctr.c, aes_ctr.h                  Eran Kornblau
   bprint                                Nicolas George
   bswap.h
+  csp.c, csp.h                          Leo Izen, Ronald S. Bultje
   des                                   Reimar Doeffinger
   dynarray.h                            Nicolas George
   eval.c, eval.h                    [2] Michael Niedermayer
@@ -122,7 +122,7 @@ Generic Parts:
   DSP utilities:
     dsputils.c, dsputils.h              Michael Niedermayer
   entropy coding:
-    rangecoder.c, rangecoder.h          Michael Niedermayer
+    rangecoder.c, rangecoder.h      [2] Michael Niedermayer
     lzw.*                               Michael Niedermayer
   floating point AAN DCT:
     faandct.c, faandct.h            [2] Michael Niedermayer
@@ -190,6 +190,7 @@ Codecs:
   h263*                                 Michael Niedermayer
   h264*                                 Loren Merritt, Michael Niedermayer
   hap*                                  Tom Butterworth
+  hevc/*                                Anton Khirnov
   huffyuv*                              Michael Niedermayer
   idcinvideo.c                          Mike Melanson
   interplayvideo.c                      Mike Melanson
@@ -206,7 +207,6 @@ Codecs:
   libgsm.c                              Michel Bardiaux
   libkvazaar.c                          Arttu Ylä-Outinen
   libopenh264enc.c                      Martin Storsjo, Linjie Fu
-  libopenjpeg.c                         Jaikrishnan Menon
   libopenjpegenc.c                      Michael Bradshaw
   libtheoraenc.c                        David Conrad
   libvorbis.c                           David Conrad
@@ -344,6 +344,7 @@ Filters:
   vf_scale.c                        [2] Michael Niedermayer
   vf_tonemap_opencl.c                   Ruiling Song
   vf_yadif.c                        [2] Michael Niedermayer
+  vf_xfade_vulkan.c                 [2] Marvin Scholz (CC <epirat07@gmail.com>)
 
 Sources:
   vsrc_mandelbrot.c                 [2] Michael Niedermayer
@@ -364,7 +365,7 @@ Generic parts:
 Muxers/Demuxers:
   4xm.c                                 Mike Melanson
   aadec.c                               Vesselin Bontchev (vesselin.bontchev at yandex dot com)
-  adtsenc.c                             Robert Swain
+  adtsenc.c                         [0]
   aiffdec.c                             Baptiste Coudurier, Matthieu Bouron
   aiffenc.c                             Baptiste Coudurier, Matthieu Bouron
   alp.c                                 Zane van Iperen
@@ -390,7 +391,7 @@ Muxers/Demuxers:
   dss.c                                 Oleksij Rempel
   dtsdec.c                              foo86
   dv.c                                  Roman Shaposhnik
-  dvdvideodec.c                         Marth64
+  dvdvideodec.c                     [2] Marth64
   electronicarts.c                      Peter Ross
   evc*                                  Samsung (Dawid Kozinski)
   ffm*                                  Baptiste Coudurier
@@ -400,6 +401,7 @@ Muxers/Demuxers:
   gxf.c                                 Reimar Doeffinger
   gxfenc.c                              Baptiste Coudurier
   hlsenc.c                              Christian Suloway, Steven Liu
+  iamf*                             [2] James Almer
   idcin.c                               Mike Melanson
   idroqdec.c                            Mike Melanson
   iff.c                                 Jaikrishnan Menon
@@ -414,9 +416,9 @@ Muxers/Demuxers:
   libopenmpt.c                          Josh de Kock
   lmlm4.c                               Ivo van Poorten
   lxfdec.c                              Tomas Härdin
-  matroska.c                            Aurelien Jacobs, Andreas Rheinhardt
-  matroskadec.c                         Aurelien Jacobs, Andreas Rheinhardt
-  matroskaenc.c                         David Conrad, Andreas Rheinhardt
+  matroska.c                            Andreas Rheinhardt
+  matroskadec.c                         Andreas Rheinhardt
+  matroskaenc.c                         Andreas Rheinhardt
   matroska subtitles (matroskaenc.c)    John Peebles
   metadata*                             Aurelien Jacobs
   microdvd*                             Aurelien Jacobs
@@ -443,7 +445,8 @@ Muxers/Demuxers:
   pva.c                                 Ivo van Poorten
   r3d.c                                 Baptiste Coudurier
   raw.c                                 Michael Niedermayer
-  rcwtenc.c                             Marth64
+  rcwtdec.c                         [2] Marth64
+  rcwtenc.c                         [2] Marth64
   rdt.c                                 Ronald S. Bultje
   rl2.c                                 Sascha Sommer
   rmdec.c, rmenc.c                      Ronald S. Bultje
@@ -485,7 +488,7 @@ Protocols:
   libzmq.c                              Andriy Gelman
   mms*.c                                Ronald S. Bultje
   udp.c                                 Luca Abeni
-  icecast.c                             Marvin Scholz (CC <epirat07@gmail.com>)
+  icecast.c                         [2] Marvin Scholz (CC <epirat07@gmail.com>)
 
 
 libswresample
@@ -509,9 +512,10 @@ Operating systems / CPU architectures
 Alpha                               [0]
 MIPS                                    Manojkumar Bhosale, Shiyou Yin
 LoongArch                           [2] Shiyou Yin
-Mac OS X / PowerPC                      Romain Dolbeau, Guillaume Poirier
+Darwin (macOS, iOS)                 [2] Marvin Scholz
+Mac OS X / PowerPC                  [0]
 Amiga / PowerPC                         Colin Ward
-Linux / PowerPC                         Lauri Kasanen
+Linux / PowerPC                     [1] Lauri Kasanen
 RISC-V                              [2] Rémi Denis-Courmont
 Windows MinGW                           Alex Beregszaszi, Ramiro Polla
 Windows Cygwin                          Victor Paesa

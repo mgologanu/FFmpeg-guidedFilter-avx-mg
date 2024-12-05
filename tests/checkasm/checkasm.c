@@ -94,6 +94,12 @@
 #define isatty(fd) 1
 #endif
 
+#if ARCH_AARCH64
+#include "libavutil/aarch64/cpu.h"
+#elif ARCH_RISCV
+#include "libavutil/riscv/cpu.h"
+#endif
+
 #if ARCH_ARM && HAVE_ARMV5TE_EXTERNAL
 #include "libavutil/arm/cpu.h"
 
@@ -133,6 +139,9 @@ static const struct {
     #endif
     #if CONFIG_DCA_DECODER
         { "synth_filter", checkasm_check_synth_filter },
+    #endif
+    #if CONFIG_DIRAC_DECODER
+        { "diracdsp", checkasm_check_diracdsp },
     #endif
     #if CONFIG_EXR_DECODER
         { "exrdsp", checkasm_check_exrdsp },
@@ -305,6 +314,8 @@ static const struct {
     { "NEON",     "neon",     AV_CPU_FLAG_NEON },
     { "DOTPROD",  "dotprod",  AV_CPU_FLAG_DOTPROD },
     { "I8MM",     "i8mm",     AV_CPU_FLAG_I8MM },
+    { "SVE",      "sve",      AV_CPU_FLAG_SVE },
+    { "SVE2",     "sve2",     AV_CPU_FLAG_SVE2 },
 #elif ARCH_ARM
     { "ARMV5TE",  "armv5te",  AV_CPU_FLAG_ARMV5TE },
     { "ARMV6",    "armv6",    AV_CPU_FLAG_ARMV6 },
@@ -320,13 +331,13 @@ static const struct {
 #elif ARCH_RISCV
     { "RVI",      "rvi",      AV_CPU_FLAG_RVI },
     { "misaligned", "misaligned", AV_CPU_FLAG_RV_MISALIGNED },
-    { "RVBbasic", "rvb_b",    AV_CPU_FLAG_RVB_BASIC },
+    { "RV_zbb",   "rvb_b",    AV_CPU_FLAG_RVB_BASIC },
     { "RVB",      "rvb",      AV_CPU_FLAG_RVB },
-    { "RVVi32",   "rvv_i32",  AV_CPU_FLAG_RVV_I32 },
-    { "RVVf32",   "rvv_f32",  AV_CPU_FLAG_RVV_F32 },
-    { "RVVi64",   "rvv_i64",  AV_CPU_FLAG_RVV_I64 },
-    { "RVVf64",   "rvv_f64",  AV_CPU_FLAG_RVV_F64 },
-    { "RV_Zvbb",  "rv_zvbb",  AV_CPU_FLAG_RV_ZVBB },
+    { "RV_zve32x","rvv_i32",  AV_CPU_FLAG_RVV_I32 },
+    { "RV_zve32f","rvv_f32",  AV_CPU_FLAG_RVV_F32 },
+    { "RV_zve64x","rvv_i64",  AV_CPU_FLAG_RVV_I64 },
+    { "RV_zve64d","rvv_f64",  AV_CPU_FLAG_RVV_F64 },
+    { "RV_zvbb",  "rv_zvbb",  AV_CPU_FLAG_RV_ZVBB },
 #elif ARCH_MIPS
     { "MMI",      "mmi",      AV_CPU_FLAG_MMI },
     { "MSA",      "msa",      AV_CPU_FLAG_MSA },
@@ -352,6 +363,8 @@ static const struct {
 #elif ARCH_LOONGARCH
     { "LSX",      "lsx",      AV_CPU_FLAG_LSX },
     { "LASX",     "lasx",     AV_CPU_FLAG_LASX },
+#elif ARCH_WASM
+    { "SIMD128",    "simd128",  AV_CPU_FLAG_SIMD128 },
 #endif
     { NULL }
 };
@@ -759,6 +772,8 @@ static LONG NTAPI signal_handler(EXCEPTION_POINTERS *e) {
 }
 #endif
 #else
+
+#ifndef _WASI_EMULATED_SIGNAL
 static void signal_handler(int s);
 
 static const struct sigaction signal_handler_act = {
@@ -773,6 +788,8 @@ static void signal_handler(int s) {
         checkasm_load_context(s);
     }
 }
+#endif // _WASI_EMULATED_SIGNAL
+
 #endif
 
 /* Compares a string with a wildcard pattern. */
@@ -915,16 +932,19 @@ int main(int argc, char *argv[])
 {
     unsigned int seed = av_get_random_seed();
     int i, ret = 0;
+    char arch_info_buf[50] = "";
 
 #ifdef _WIN32
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     AddVectoredExceptionHandler(0, signal_handler);
 #endif
 #else
+#ifndef _WASI_EMULATED_SIGNAL
     sigaction(SIGBUS,  &signal_handler_act, NULL);
     sigaction(SIGFPE,  &signal_handler_act, NULL);
     sigaction(SIGILL,  &signal_handler_act, NULL);
     sigaction(SIGSEGV, &signal_handler_act, NULL);
+#endif // _WASI_EMULATED_SIGNAL
 #endif
 #if HAVE_PRCTL && defined(PR_SET_UNALIGN)
     prctl(PR_SET_UNALIGN, PR_UNALIGN_SIGBUS);
@@ -979,7 +999,16 @@ int main(int argc, char *argv[])
         }
     }
 
-    fprintf(stderr, "checkasm: using random seed %u\n", seed);
+#if ARCH_AARCH64 && HAVE_SVE
+    if (have_sve(av_get_cpu_flags()))
+        snprintf(arch_info_buf, sizeof(arch_info_buf),
+                 "SVE %d bits, ", 8 * ff_aarch64_sve_length());
+#elif ARCH_RISCV && HAVE_RVV
+    if (av_get_cpu_flags() & AV_CPU_FLAG_RVV_I32)
+        snprintf(arch_info_buf, sizeof (arch_info_buf),
+                 "%zu-bit vectors, ", 8 * ff_get_rv_vlenb());
+#endif
+    fprintf(stderr, "checkasm: %susing random seed %u\n", arch_info_buf, seed);
     av_lfg_init(&checkasm_lfg, seed);
 
     if (state.bench_pattern)
